@@ -1,6 +1,6 @@
 #include "hoymiles_dtu.h"
 
-#include "esphome/core/helpers.h"
+#include "esphome/core/alloc_helpers.h"
 #include "esphome/core/log.h"
 
 #include <cstdio>
@@ -210,7 +210,7 @@ void HoymilesDtuInverter::publish_status_() {
   }
   if (last_seen_text_sensor_ != nullptr && last_seen_ms_ != 0) {
     char buffer[24];
-    snprintf(buffer, sizeof(buffer), "%us", last_seen_ms_ / 1000);
+    snprintf(buffer, sizeof(buffer), "%lus", last_seen_ms_ / 1000);
     last_seen_text_sensor_->publish_state(buffer);
   }
 }
@@ -245,7 +245,7 @@ void HoymilesDtuComponent::setup() {
     mark_failed();
     return;
   }
-  ESP_LOGCONFIG(TAG, "nRF24 radio ready, DTU serial 0x%08X", dtu_serial_);
+  ESP_LOGCONFIG(TAG, "nRF24 radio ready, DTU serial 0x%08lX", dtu_serial_);
 
   if (scan_on_boot_) {
     // Fire one bounded discovery scan a short delay after boot (let wifi/time and the first poll
@@ -318,7 +318,7 @@ void HoymilesDtuComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  STATUS=0x%02X CONFIG=0x%02X SETUP_AW=0x%02X RF_SETUP=0x%02X", detected_status_,
                 detected_config_, detected_setup_aw_, detected_rf_setup_);
   LOG_UPDATE_INTERVAL(this);
-  ESP_LOGCONFIG(TAG, "  DTU serial: 0x%08X", dtu_serial_);
+  ESP_LOGCONFIG(TAG, "  DTU serial: 0x%08lX", dtu_serial_);
   // Scan detection is passive/receive-only. Note: HM dynamic-payload reception is coupled to
   // hardware auto-ACK on the nRF24, so the monitor does ACK what it overhears; this leaks nothing
   // beyond what the (already unauthenticated) protocol exposes, but it is not perfectly stealthy.
@@ -327,13 +327,13 @@ void HoymilesDtuComponent::dump_config() {
   // The active scanner is available on-demand via the scan_inverters action (it transmits discovery
   // requests, so it never runs on a timer). Reported here only as an availability note.
   if (scan_on_boot_) {
-    ESP_LOGCONFIG(TAG, "  Active scan: on-demand via scan_inverters action; one-shot on boot (+%ums, %ums)",
+    ESP_LOGCONFIG(TAG, "  Active scan: on-demand via scan_inverters action; one-shot on boot (+%lums, %lums)",
                   scan_on_boot_delay_ms_, scan_on_boot_duration_ms_);
   } else {
     ESP_LOGCONFIG(TAG, "  Active scan: on-demand via scan_inverters action");
   }
   for (auto *inverter : inverters_) {
-    ESP_LOGCONFIG(TAG, "  Inverter serial=%012llX model=%s status=%s last_seen=%us error=%s", inverter->get_serial(),
+    ESP_LOGCONFIG(TAG, "  Inverter serial=%012llX model=%s status=%s last_seen=%lus error=%s", inverter->get_serial(),
                   hm_model_to_string(inverter->get_model()), hm_status_to_string(inverter->get_status()),
                   inverter->get_last_seen() / 1000, inverter->get_last_error());
   }
@@ -703,13 +703,13 @@ void HoymilesDtuComponent::log_exchange_summary_(bool success, const char *error
   if (success) {
     ESP_LOGI(TAG,
              "Exchange %012llX complete: tx_ch=%u tx=%s rx_start=%u packets=%u accepted=%u invalid=%u "
-             "duplicate=%u duration=%ums",
+             "duplicate=%u duration=%lums",
              serial, tx_channel, tx_result_, rx_channel, rx_packet_count_, frame_count_, invalid_frame_count_,
              duplicate_frame_count_, duration_ms);
   } else {
     ESP_LOGW(TAG,
              "Exchange %012llX failed: reason=%s tx_ch=%u tx=%s status=0x%02X rx_start=%u packets=%u accepted=%u "
-             "invalid=%u duplicate=%u duration=%ums",
+             "invalid=%u duplicate=%u duration=%lums",
              serial, result, tx_channel, tx_result_, tx_status_, rx_channel, rx_packet_count_, frame_count_,
              invalid_frame_count_, duplicate_frame_count_, duration_ms);
   }
@@ -939,7 +939,7 @@ void HoymilesDtuComponent::report_scan_(const HmSniffResult &sniff, uint32_t now
   }
   const char *severity = hm_severity_to_string(sniff.severity);
   const uint8_t channel = HM_RF_CHANNELS[monitor_channel_index_];
-  ESP_LOGD(TAG, "Scan packet: %s %s opcode=0x%02X dtu=0x%08X ch=%u targets_us=%d", severity, kind, sniff.opcode,
+  ESP_LOGD(TAG, "Scan packet: %s %s opcode=0x%02X dtu=0x%08lX ch=%u targets_us=%d", severity, kind, sniff.opcode,
            sniff.sender_dtu_serial, channel, sniff.targets_our_inverter);
   // Publish the numeric severity on every classified packet (un-throttled, de-duplicated) so an
   // escalation to a more serious opcode is surfaced immediately, not hidden behind the text throttle.
@@ -956,7 +956,7 @@ void HoymilesDtuComponent::report_scan_(const HmSniffResult &sniff, uint32_t now
   }
   scan_last_report_ms_ = now;
   char buffer[96];
-  snprintf(buffer, sizeof(buffer), "%s | %s | DTU 0x%08X | ch %u | #%u", severity, kind, sniff.sender_dtu_serial,
+  snprintf(buffer, sizeof(buffer), "%s | %s | DTU 0x%08lX | ch %u | #%lu", severity, kind, sniff.sender_dtu_serial,
            channel, scan_count_);
   if (sniff.severity >= HM_SEVERITY_CRITICAL) {
     ESP_LOGE(TAG, "Radio scan detected: %s", buffer);
@@ -986,7 +986,7 @@ void HoymilesDtuComponent::start_scan_(uint32_t now) {
   // address), programmed later by start_listening_.
   write_register_(NRF_REG_TX_ADDR, HM_SEARCH_ID_ADDRESS, sizeof(HM_SEARCH_ID_ADDRESS));
   write_register_(NRF_REG_RX_ADDR_P0, HM_SEARCH_ID_ADDRESS, sizeof(HM_SEARCH_ID_ADDRESS));
-  ESP_LOGI(TAG, "Scan started: duration=%ums commands=%s%s dtu=0x%08X", scan_duration_ms_,
+  ESP_LOGI(TAG, "Scan started: duration=%lums commands=%s%s dtu=0x%08lX", scan_duration_ms_,
            (scan_commands_ & HM_SCAN_CMD_SEARCH_ID) ? "search-id " : "",
            (scan_commands_ & HM_SCAN_CMD_COLLECT_INFO) ? "collect-info" : "", dtu_serial_);
   transmit_scan_probe_(now);
@@ -1103,10 +1103,10 @@ void HoymilesDtuComponent::report_discovered_(const HmDiscoveredInverter &invert
   const uint8_t channel = HM_RF_CHANNELS[scan_probe_channel_index_];
   char buffer[96];
   if (via_search_id) {
-    snprintf(buffer, sizeof(buffer), "serial ...%08X | PID 0x%04X | via search-id | ch %u | #%u",
+    snprintf(buffer, sizeof(buffer), "serial ...%08lX | PID 0x%04X | via search-id | ch %u | #%u",
              inverter.serial_suffix, inverter.pid, channel, scan_found_count_);
   } else {
-    snprintf(buffer, sizeof(buffer), "serial ...%08X | PID - | via collect-info | ch %u | #%u", inverter.serial_suffix,
+    snprintf(buffer, sizeof(buffer), "serial ...%08lX | PID - | via collect-info | ch %u | #%u", inverter.serial_suffix,
              channel, scan_found_count_);
   }
   ESP_LOGI(TAG, "Scan found: %s", buffer);
@@ -1138,7 +1138,7 @@ void HoymilesDtuComponent::advance_scan_probe_(uint32_t now) {
 
 void HoymilesDtuComponent::finish_scan_(uint32_t now) {
   stop_listening_();
-  ESP_LOGI(TAG, "Scan complete: %u inverter(s) found in %ums", scan_found_count_, now - scan_started_ms_);
+  ESP_LOGI(TAG, "Scan complete: %u inverter(s) found in %lums", scan_found_count_, now - scan_started_ms_);
   if (scan_found_count_sensor_ != nullptr) {
     scan_found_count_sensor_->publish_state(static_cast<float>(scan_found_count_));
   }
